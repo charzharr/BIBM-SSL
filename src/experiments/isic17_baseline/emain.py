@@ -23,11 +23,10 @@ from torchvision import transforms
 from torchsummary import summary
 
 import lib
-from lib import metrics2d, metrics3d
+from lib import metrics
 from lib.utils import statistics, images, devices, timers
-from lib.data import knee_cartilage
 
-from . import edata, esetup
+from . import esetup
 
 
 WATCH = timers.StopWatch()
@@ -37,17 +36,25 @@ SAVE_BEST_METRICS = {  # metric (str): max_better (bool)
 
 def run(cfg, checkpoint=None):
 
-    def it_metrics(batch_d, out_d, loss, meter, tracker, test=False):
+    def it_metrics(pred, targ, loss, meter, tracker, test=False):
+        mets = metrics.big5_metrics(pred, targ)
         itmets = {'loss': float(loss)}
-        itmets['dice'] = metrics2d.dice(out, Y)
-        itmets['iou'] = metrics2d.IoU(out, Y)
+        itmets['dice'] = mets['DI']
+        itmets['jaccard'] = mets['JA']
+        itmets['accuracy'] = mets['AC']
+        itmets['sensitivity'] = mets['SE']
+        itmets['specificity'] = mets['SP']
+        itmets['TP'] = mets['TP']
+        itmets['FP'] = mets['FP']
+        itmets['FN'] = mets['FN']
+        itmets['TN'] = mets['TN']
         meter.update(itmets)
         
         pre = 'test_' if test else 'train_' 
         tracker.update({
             pre + 'it_loss': itmets['loss'],
             pre + 'it_dice': itmets['dice'],
-            pre + 'it_iou': itmets['iou']
+            pre + 'it_jaccard': itmets['jaccard']
         })
         return itmets
     
@@ -65,6 +72,14 @@ def run(cfg, checkpoint=None):
     optimizer = comps['optimizer']
     scheduler = comps['scheduler']
     tracker = comps['tracker']
+
+    if debug['overfitbatch']:
+        batches = []
+        for i, batch in enumerate(trainloader):
+            if i in (3,4,5):
+                batches.append(batch)
+            elif i > 5: break
+        trainloader = batches
 
     for epoch in range(cfg['train']['start_epoch'], cfg['train']['epochs']+1):
         print("\n======================")
@@ -89,7 +104,8 @@ def run(cfg, checkpoint=None):
 
             X, Y, out = X.detach(), Y.detach(), out.detach()
 
-            itmets = it_metrics(Y, out, loss.item(), epmeter, tracker)
+            itmets = it_metrics((out > 0.5).int(), Y, 
+                loss.item(), epmeter, tracker)
             _print_itmets(cfg, it+1, len(trainloader), itmets,
                 WATCH.toc(name='iter', disp=False))
             
@@ -150,7 +166,7 @@ def _print_itmets(cfg, iter_num, iter_tot, it_mets, duration):
         f"\n    Iter {iter_num}/{iter_tot} ({duration:.1f} sec, {mem:.1f} GB) - "
         f"loss {float(it_mets['loss']):.3f}, "
         f"dice {float(it_mets['dice']):.3f}, "
-        f"iou {float(it_mets['iou']):.3f}, "
+        f"iou {float(it_mets['jaccard']):.3f}, "
     )
 
 # dict_keys: loss, mAP, F1, F1s, TPs, FPs, FNs
@@ -207,4 +223,6 @@ def _save_model(epmets, state, crit, opt, tracker, cfg):
         },
         save_path
     )
+
+
 

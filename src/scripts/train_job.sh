@@ -1,7 +1,5 @@
 #!/bin/bash
 
-EXP_NAME = "hello_test"
-
 #$ -N BIBM_SSL
 #$ -o "/afs/crc.nd.edu/user/y/yzhang46/_BIBM20/src/experiments"
 
@@ -43,6 +41,8 @@ else
         
         cd "/Users/charzhar/Desktop/2020 BIBM/project/src"
 
+        USER="charzhar"
+
 fi
 
 
@@ -54,10 +54,9 @@ echo -e "Assigned GPU(s): ${SGE_HGR_gpu_card}\n"
 echo -e "Starting Experiment =)"
 echo -e "=-=-=-=-=-=-=-=-=-=-=-=-=\n"
 
-
 python3 -u train.py \
+        --user $USER  \
+        --gpu $SGE_HGR_gpu_card \
         --config "./experiments/isic17_baseline/config.yaml" \
         --checkpoint "" \
-        --user $USER  \
-        --gpu $SGE_HGR_gpu_card
 

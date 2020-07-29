@@ -22,51 +22,79 @@ class BaseScheduler:
 
 class Uniform(BaseScheduler):
     """ Keeps uniform learning rate throughout. """
-    def __init__(self, optimizer):
+    def __init__(self, optimizer, rampup_rates=[]):
         self.optimizer = optimizer
         self.lr = self.get_lr()
+        self.rampup_rates = rampup_rates
+        if self.rampup_rates:
+            if self.rampup_rates[-1] != self.lr:
+                self.rampup_rates.append(self.lr)
+            self.set_lr(self.rampup_rates.pop(0))
 
     def step(self, **kws):
-        pass
+        if self.rampup_rates:
+            self.set_lr(self.rampup_rates.pop(0))
 
 
 class CosineDecay(BaseScheduler):
     """ LR_t = 0.5(1 + cos(pi*t/T)) * LR_0 """
-    def __init__(self, optimizer, T, t=0):
+    def __init__(self, optimizer, T, t=0, rampup_rates=[]):
         self.T = T
         self.optimizer = optimizer
         self.lr = self.orig_lr = self.get_lr()
+
+        self.rampup_rates = rampup_rates
         self.step(epoch=t)   # in-case we start from epoch > 1
 
     def step(self, epoch=None, **kws):
         assert epoch is not None, "Need to give epoch."
-
-        new_lr = 0.5 * (1 + math.cos(math.pi * epoch / self.T)) * self.orig_lr
-        if new_lr != self.lr:
-            self.set_lr(new_lr)
+        
+        if self.rampup_rates:
+            self.set_lr(self.rampup_rates.pop(0))
+        else:
+            new_lr = 0.5 * (1 + math.cos(math.pi * epoch / self.T)) * self.orig_lr
+            if new_lr != self.lr:
+                self.set_lr(new_lr)
 
     
 class StepDecay(BaseScheduler):
     
-    def __init__(self, optimizer, T, factor=0.2, steps=[0.33, 0.66]):
+    def __init__(self, optimizer, T, factor=0.2, steps=[0.33, 0.66], 
+            rampup_rates=[]):
         self.T = T
         self.optimizer = optimizer
         self.factor = factor
-        self.lr = self.get_lr()
-        
-        mult_fac = T if steps[0] < 1 else 1
-        self.step_epochs = [s * mult_fac for s in steps]
+        self.lr = self.start_lr = self.get_lr()
+
+        if not steps or not sum(steps):
+            self.step_epochs = []
+        else:
+            mult_fac = T if steps[0] < 1 else 1
+            self.step_epochs = [int(s * mult_fac) for s in steps]
+
+        self.rampup_rates = rampup_rates
+        if self.rampup_rates:
+            if self.rampup_rates[-1] != self.lr:
+                self.rampup_rates.append(self.lr)
+            self.set_lr(self.rampup_rates.pop(0))
 
     def step(self, epoch=None, **kws):
         assert epoch is not None
-        if epoch in self.step_epochs:
-            self.set_lr(self.lr * self.factor)
+        if self.rampup_rates:
+            self.set_lr(self.rampup_rates.pop(0))
+            return
+
+        num_lrsteps = sum([epoch >= s for s in self.step_epochs])
+        correct_lr = self.start_lr * self.factor ** num_lrsteps
+        if self.lr != correct_lr:
+            self.set_lr(correct_lr)
 
 
 class ReduceOnPlateau(BaseScheduler):
     """ Reduce LR on Plateue scheduler based on loss."""
     
-    def __init__(self, optimizer, factor=0.5, patience=3, lowerbetter=True):
+    def __init__(self, optimizer, factor=0.5, patience=3, lowerbetter=True,
+            rampup_rates=[]):
         self.factor = 0.5
         self.patience = patience
         self.lowerbetter = lowerbetter
@@ -76,9 +104,19 @@ class ReduceOnPlateau(BaseScheduler):
 
         self.optimizer = optimizer
         self.lr = self.get_lr()
+
+        self.rampup_rates = rampup_rates
+        if self.rampup_rates:
+            if self.rampup_rates[-1] != self.lr:
+                self.rampup_rates.append(self.lr)
+            self.set_lr(self.rampup_rates.pop(0))
     
     def step(self, val=None, **kws):
         assert val is not None, "Need to give step a val."
+
+        if self.rampup_rates:
+            self.set_lr(self.rampup_rates.pop(0))
+            return
 
         if self.lowerbetter:
             improved = True if val <= self.best_val else False

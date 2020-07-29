@@ -2,6 +2,39 @@
 import sys
 import torch
 
+
+def big5_metrics(pred, targ, eps=10e-6):
+    r""" 
+    Returns JA (Jaccard), DI (Dice), AC (accuracy), SE (Sensitivity), 
+    and SP (Specificity) as a dictionary of floats.
+    Parameters
+        pred (Bx1xHxW binary tensor)  
+        targ (Bx1xHxW binary tensor) 
+    """
+    B = pred.shape[0]
+    preds = pred.view(-1)
+    targs = targ.view(-1)
+
+    TP = torch.sum(preds.eq(1) & targs.eq(1))
+    FP = torch.sum(preds.eq(1) & targs.eq(0))
+    FN = torch.sum(preds.eq(0) & targs.eq(1))
+    TN = torch.sum(preds.eq(0) & targs.eq(0))
+
+    return {
+        'TP': TP, 'FP': FP, 'FN': FN, 'TN': TN,
+        'JA': TP / (TP + FN + FP + eps),
+        'DI': 2 * TP / (2 * TP + FN + FP + eps),
+        'AC': (TP + TN) / (TP + FP + TN + FN),
+        'SE': TP / (TP + FN),
+        'SP': TN / (TN + FP)
+    }
+
+
+### ======================================================================== ###
+### * ### * ### * ### *      More Generic 2D Metrics     * ### * ### * ### * ###
+### ======================================================================== ###
+
+
 def dice(pred, targ, per_channel=False, eps=10e-6):
     """ Computes segmentation dice coefficient for a batch.
         Dice = 2* |P ∩ T| / (|P| |T|) <- averaged over all C if not per_channel

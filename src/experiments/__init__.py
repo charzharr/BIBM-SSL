@@ -12,3 +12,4 @@ def get_module(exp_name):
         for exp in EXPERIMENTS:
             if exp in exp_name:
                 return EXPERIMENTS[exp]
+    raise ValueError(f"Experiment name ({exp_name}) not found in {EXPERIMENTS}.")

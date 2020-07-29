@@ -1,24 +1,28 @@
 """ esetup.py (By: Charley Zhang, July 2020)
 Does the heavy lifting for setting up the experiment.
   - Gathers the necessary resources, modules, and utilities.
-  - Configures all components used in training
-  - Initializes stat trackers
+  - Configures all essential training components 
+    (model architecture + params, criterion, optimizer, schedulers)
+  - Initializes stat trackers and experiment trackers
+  - Defines dataset and data collection for batches
 """
-
 
 import sys, os
 import torch
 
+import pathlib
+from PIL import Image
+import numpy as np
+import torch
+
 import lib
 from lib.utils import schedulers, statistics
-from lib.modules import losses2d, unet2d
+from lib.modules import losses, unets
+from lib.data import transforms, isic_2017
 
-from . import edata
 
-MODELS = {
-    'unet2d': unet2d,
-    # 'unet3d': unet3d,
-}
+NUM_WORKERS = 0
+CURR_PATH = pathlib.Path(__file__).parent
 
 
 def setup(cfg, checkpoint):
@@ -48,10 +52,10 @@ def setup(cfg, checkpoint):
                 cfg['experiment']['debug']['wandb'] else None
 
     # Load Model Components
-    data = edata.get_data(cfg)
+    data = get_data(cfg)
     device = torch.device(cfg['experiment']['device'])
-    criterion = _get_criterion(cfg)
-    model = _get_model(cfg)
+    criterion = get_criterion(cfg)
+    model = get_model(cfg)
 
     if checkpoint:
         resume_dict = torch.load(checkpoint)
@@ -65,7 +69,7 @@ def setup(cfg, checkpoint):
         if 'scheduler' in resume_dict:
             scheduler = resume_dict['scheduler']
         else:
-            scheduler = _get_scheduler(cfg, optimizer)
+            scheduler = get_scheduler(cfg, optimizer)
 
         if 'tracker' in resume_dict:
             tracker = resume_dict['tracker']
@@ -75,8 +79,8 @@ def setup(cfg, checkpoint):
             tracker = utils.statistics.ExperimentTracker(wandb=use_wandb)
             
     else:
-        optimizer = _get_optimizer(cfg, model.parameters())
-        scheduler = _get_scheduler(cfg, optimizer)
+        optimizer = get_optimizer(cfg, model.parameters())
+        scheduler = get_scheduler(cfg, optimizer)
         tracker = statistics.ExperimentTracker(wandb=use_wandb)
 
     return {
@@ -90,52 +94,53 @@ def setup(cfg, checkpoint):
     }
 
 
-### ---- ### ---- \\    Helpers     // ---- ### ---- ###
+### ======================================================================== ###
+### * ### * ### * ### *       Training Components        * ### * ### * ### * ###
+### ======================================================================== ###
 
 
-def _get_model(cfg):
-    name = cfg['model']['name']
-    if name.lower() in MODELS:
-        print(f"  > Fetching {name} model..", end='')
-        model = MODELS[name].get_model(cfg, pretrained=False)
-    else:
-        raise ValueError(f"  > Model({name}) not found..")
+def get_model(cfg):
+    model = lib.modules.get_model(cfg)
     return model
 
 
-def _get_scheduler(cfg, optimizer):
+def get_scheduler(cfg, optimizer):
     sched = cfg['train']['scheduler']['name']
     t = cfg['train']['start_epoch']
     T = cfg['train']['epochs']
     factor = cfg['train']['scheduler']['factor']
+    rampup_rates = cfg['train']['scheduler']['rampup_rates']
     
     if 'plateau' in sched:
         scheduler = schedulers.ReduceOnPlateau(
             optimizer,
             factor=factor,
             patience=cfg['train']['scheduler']['plateau']['patience'],
-            lowerbetter=True
+            lowerbetter=True,
+            rampup_rates=rampup_rates
         )
     elif 'step' in sched:
         scheduler = schedulers.StepDecay(
             optimizer,
             factor=factor,
             T=T,
-            steps=cfg['train']['scheduler']['step']['steps']
+            steps=cfg['train']['scheduler']['step']['steps'],
+            rampup_rates=rampup_rates
         )
     elif 'cos' in sched:
         scheduler = schedulers.CosineDecay(
             optimizer,
             T=T,
-            t=t
+            t=t,
+            rampup_rates=rampup_rates
         )
     else:
-        scheduler = schedulers.Uniform(optimizer)
+        scheduler = schedulers.Uniform(optimizer, rampup_rates=rampup_rates)
     
     return scheduler
 
 
-def _get_optimizer(cfg, params):
+def get_optimizer(cfg, params):
     opt = cfg['train']['optimizer']['name']
     lr = cfg['train']['optimizer']['lr']
     mom = cfg['train']['optimizer']['momentum']
@@ -166,19 +171,104 @@ def _get_optimizer(cfg, params):
     return optimizer
 
 
-def _get_criterion(cfg):
+def get_criterion(cfg):
     
-    critname = cfg['criterion']['name']
-    
-    if 'bce_logit' in critname:
-        criterion = torch.nn.BCEWithLogitsLoss()
-    elif 'pixelwise_bce_2d':
-        criterion = losses2d.PixelWiseBCE()
-    elif 'bce' in critname:
-        criterion = torch.nn.BCELoss()
+    crit_cfg = cfg['criterion']
+    crit_name = crit_cfg['name']
+    kwargs = crit_cfg[crit_name] if crit_name in crit_cfg else {}
+    if 'weights' in kwargs:
+        kwargs['weights'] = torch.tensor(kwarts['weights'])
+
+    if crit_name == 'softdice' or crit_name == 'dice':
+        criterion = losses.SoftDiceLoss(**kwargs)
+    elif crit_name == 'softjaccard' or crit_name == 'softiou' or crit_name == 'iou':
+        criterion = losses.SoftJaccardLoss(**kwargs)
+    elif crit_name == 'ce' or 'cross_entropy' in crit_name:
+        criterion = torch.nn.CrossEntropyLoss(**kwargs)
+    elif crit_name == 'mse' or 'mean_square' in crit_name:
+        criterion = torch.nn.MSELoss(**kwargs)
     else:
         raise ValueError(f"Criterion {critname} is not supported.")
 
     return criterion
 
 
+### ======================================================================== ###
+### * ### * ### * ### *           Data Handling          * ### * ### * ### * ###
+### ======================================================================== ###
+
+
+def get_data(cfg):
+    ret = {}
+    ret['df'] = df = isic_2017.get_df(os.path.join(
+        CURR_PATH.parent.parent.parent.absolute(), 'datasets', 'ISIC_2017'
+    ))
+    
+    ret['train_dataset'] = ISIC17(
+        df[df['subsetname'] == 'train'],
+        transforms.GeneralTransform(cfg['train']['transforms'])
+    )
+    ret['train_loader'] = torch.utils.data.DataLoader(
+        ret['train_dataset'],
+        batch_size=cfg['train']['batch_size'],
+        shuffle=cfg['train']['shuffle'],
+        num_workers=NUM_WORKERS, pin_memory=False  # non_block not useful here
+    )
+
+    ret['test_dataset'] = ISIC17(
+        df[df['subsetname'] == 'test'],
+        transforms.GeneralTransform(cfg['test']['transforms'])
+    )
+    ret['test_loader'] = torch.utils.data.DataLoader(
+        ret['test_dataset'],
+        batch_size=cfg['test']['batch_size'],
+        shuffle=False,
+        num_workers=NUM_WORKERS, pin_memory=False  # non_block not useful here
+    )
+
+    return ret
+
+
+
+class ISIC17(torch.utils.data.Dataset):
+    
+    def __init__(self, df, transforms):
+        self.df = df
+        self.T = transforms
+        
+        self.images, self.masks = [], []
+        for _, s in df.iterrows():
+            self.images.append(s['image'])
+            self.masks.append(s['mask'])
+        for im, mask in zip(self.images, self.masks):  # sanity check
+            assert im.split('/')[-1][:-4] + '_segmentation' == \
+                mask.split('/')[-1][:-4], f"ERROR: {im}, {mask} mismatch."
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        impath, maskpath = self.images[idx], self.masks[idx]
+        X, tokx = self.T.transform(Image.open(impath).convert('RGB'), 
+            shake=True, token=True
+        )
+        
+        mask = np.array(Image.open(maskpath).convert('L')).astype(np.uint8)
+        Y, toky = self.T.transform(Image.fromarray(mask, mode='L'), 
+            label=True, token=True
+        )
+        
+        import matplotlib.pyplot as plt
+        fig = plt.figure(figsize=(8,8))
+        ax = fig.add_subplot(2, 2, 1)
+        ax.imshow(Image.open(impath))
+        ax = fig.add_subplot(2, 2, 2)
+        ax.imshow(self.T.reverse(X, tokx))
+        ax = fig.add_subplot(2, 2, 3)
+        ax.imshow(Image.open(maskpath))
+        ax = fig.add_subplot(2, 2, 4)
+        ax.imshow(self.T.reverse(Y, toky))
+        plt.show()
+        # import IPython; IPython.embed(); exit(1)
+
+        return X, Y

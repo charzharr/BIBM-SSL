@@ -20,11 +20,11 @@ def get_model(cfg, pretrained=False):
             in_channels = len(entry[1][0])
     assert in_channels > 0, f"Could not get input dim from normmeanstd transform"
     
-    if model_name == 'unet_2d':
+    if model_name == 'unet':
         model = UNet(in_channels, out_channels, bilinear=bilinear)
-    elif model_name == 'bigunet_2d':
+    elif model_name == 'bigunet':
         model = BigUNet(in_channels, out_channels, bilinear=bilinear)
-    elif model_name == 'nestedunet_2d':
+    elif model_name == 'nestedunet':
         print(f"Confirmed")
         model = NestedUNet(
             out_channels, 

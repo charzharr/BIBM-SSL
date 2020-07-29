@@ -62,7 +62,7 @@ class GeneralTransform:
             return im, tokens
         return im
 
-    def reverse(self, im, tokens, only_unnorm=False):
+    def reverse(self, im, tokens, only_unnorm=True):
         # assert isinstance(im, torch.Tensor), f"Got type {type(im)}."
         if only_unnorm:
             t_names = list(zip(*tokens))[0]

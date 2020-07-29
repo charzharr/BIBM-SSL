@@ -1,17 +1,18 @@
-""" bigunet2d.py
-Larger U-Net PyTorch implementation from:
+""" unet2d.py (17.3M params)
+U-Net PyTorch implementation from:
+https://github.com/milesial/Pytorch-UNet/blob/master/unet/
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..basemodel import BaseModel
 
 
 ### ======================================================================== ###
 ### * ### * ### * ### *          U-Net Components        * ### * ### * ### * ###
 ### ======================================================================== ###
-
 
 class DoubleConv(nn.Module):
     """ (Same-Conv => [BN] => ReLU) * 2 """
@@ -32,10 +33,6 @@ class DoubleConv(nn.Module):
         return self.double_conv(x)
 
 
-class BottleNeck(nn.Module):
-    def __init__(self, in_channels, out_channels)
-
-
 class Down(nn.Module):
     """ 2x Downscale MP -> Double Conv """
     def __init__(self, in_channels, out_channels):
@@ -47,7 +44,6 @@ class Down(nn.Module):
 
     def forward(self, x):
         return self.maxpool_conv(x)
-
 
 class Up(nn.Module):
     """ 2x Upscale -> Double Conv """
@@ -97,15 +93,13 @@ class OutConv(nn.Module):
         return self.conv(x)
 
 
-
 ### ======================================================================== ###
 ### * ### * ### * ### *               U-Net              * ### * ### * ### * ###
 ### ======================================================================== ###
 
-
-class BigUNet(nn.Module):
+class UNet(BaseModel):
     def __init__(self, n_channels, n_classes, bilinear=True):
-        super(BigUNet, self).__init__()
+        super(UNet, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
