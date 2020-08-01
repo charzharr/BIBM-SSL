@@ -21,7 +21,7 @@ from lib.modules import losses, unets
 from lib.data import transforms, isic_2017
 
 
-NUM_WORKERS = 0
+NUM_WORKERS = 16
 CURR_PATH = pathlib.Path(__file__).parent
 
 
@@ -198,7 +198,7 @@ def get_criterion(cfg):
 ### ======================================================================== ###
 
 
-def get_data(cfg):
+def get_data(cfg, num_workers=NUM_WORKERS):
     ret = {}
     ret['df'] = df = isic_2017.get_df(os.path.join(
         CURR_PATH.parent.parent.parent.absolute(), 'datasets', 'ISIC_2017'
@@ -212,7 +212,7 @@ def get_data(cfg):
         ret['train_dataset'],
         batch_size=cfg['train']['batch_size'],
         shuffle=cfg['train']['shuffle'],
-        num_workers=NUM_WORKERS, pin_memory=False  # non_block not useful here
+        num_workers=num_workers, pin_memory=False  # non_block not useful here
     )
 
     ret['test_dataset'] = ISIC17(
@@ -223,7 +223,7 @@ def get_data(cfg):
         ret['test_dataset'],
         batch_size=cfg['test']['batch_size'],
         shuffle=False,
-        num_workers=NUM_WORKERS, pin_memory=False  # non_block not useful here
+        num_workers=num_workers, pin_memory=False  # non_block not useful here
     )
 
     return ret
@@ -258,17 +258,17 @@ class ISIC17(torch.utils.data.Dataset):
             label=True, token=True
         )
         
-        import matplotlib.pyplot as plt
-        fig = plt.figure(figsize=(8,8))
-        ax = fig.add_subplot(2, 2, 1)
-        ax.imshow(Image.open(impath))
-        ax = fig.add_subplot(2, 2, 2)
-        ax.imshow(self.T.reverse(X, tokx))
-        ax = fig.add_subplot(2, 2, 3)
-        ax.imshow(Image.open(maskpath))
-        ax = fig.add_subplot(2, 2, 4)
-        ax.imshow(self.T.reverse(Y, toky))
-        plt.show()
+        # import matplotlib.pyplot as plt
+        # fig = plt.figure(figsize=(8,8))
+        # ax = fig.add_subplot(2, 2, 1)
+        # ax.imshow(Image.open(impath))
+        # ax = fig.add_subplot(2, 2, 2)
+        # ax.imshow(self.T.reverse(X, tokx))
+        # ax = fig.add_subplot(2, 2, 3)
+        # ax.imshow(Image.open(maskpath))
+        # ax = fig.add_subplot(2, 2, 4)
+        # ax.imshow(self.T.reverse(Y, toky))
+        # plt.show()
         # import IPython; IPython.embed(); exit(1)
 
         return X, Y

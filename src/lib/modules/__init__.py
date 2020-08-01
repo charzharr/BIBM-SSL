@@ -1,6 +1,5 @@
 
-from .unets import unet, bigunet, nestedunet
-
+from .unets import unet, bigunet, nestedunet, r2attentionunet, denseunet
 
 __all__ = ['get_model']
 
@@ -27,16 +26,29 @@ def get_model(cfg):
     if name == 'unet':
         bilinear = settings['bilinear']
         model = unet.UNet(in_channels, out_channels, bilinear=bilinear)
-    elif name == 'bigunet':
+    elif 'bigunet' in name:
         bilinear = settings['bilinear']
-        model = bigunet.BigUNet(in_channels, out_channels, bilinear=bilinear)
+        base_size = settings['base_size']
+        model = bigunet.BigUNet(in_channels, out_channels, bilinear=bilinear,
+                    base_size=base_size)
     elif name == 'nestedunet':
         model = nestedunet.NestedUNet(
             out_channels, 
             input_channels=in_channels,
-            deep_supervision=cfg['model']['nestedunet_2d']['deepsup']
+            deep_supervision=cfg['model']['nestedunet']['deepsup']
+        )
+    elif name == 'r2attentionunet':
+        model = r2attentionunet.R2Attention_UNet(
+            in_ch=in_channels, out_ch=out_channels, t=2
+        )
+    elif name == 'denseunet':
+        model = denseunet.get_model(
+            str(settings['layers']), 
+            num_classes=out_channels
         )
     else:
         raise ValueError(f"  > Model({name}) not found..")
 
+    if name != 'denseunet':
+        print(f"\t{name} initialized ({model.param_counts[0]} params).")
     return model

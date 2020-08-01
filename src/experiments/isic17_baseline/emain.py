@@ -104,15 +104,13 @@ def run(cfg, checkpoint=None):
 
             X, Y, out = X.detach(), Y.detach(), out.detach()
 
-            itmets = it_metrics((out > 0.5).int(), Y, 
+            itmets = it_metrics((out > 0).int(), Y, 
                 loss.item(), epmeter, tracker)
             _print_itmets(cfg, it+1, len(trainloader), itmets,
                 WATCH.toc(name='iter', disp=False))
             
             if debug['break_train_iter']: break
             WATCH.tic(name='iter')
-
-            sys.exit(0)
 
         # Test + Epoch Metrics
         if epoch % debug['test_every_n_epochs'] == 0:
@@ -121,28 +119,32 @@ def run(cfg, checkpoint=None):
                 model.eval()
                 testmeter = statistics.EpochMeters()
                 WATCH.tic(name='iter')
-                for it, batch_d in enumerate(testloader):
-                    X = batch_d['X'].to(device)
-                    Y = {k: v.to(device) for k, v in batch_d['Y'].items()}
-                    loss, loss_ds, out_ds = forward(X, Y)
+                for it, batch in enumerate(testloader):
+                    X = batch[0].to(device)
+                    Y = batch[1].to(device)
 
-                    out_ds = [{k: v.detach() for k, v in o.items()} for o in out_ds]
-                    itmets = it_metrics(batch_d, out_ds[-1], 
-                        loss.item(), testmeter, tracker, test=True
-                    )
-                    _print_itmets(cfg, it+1, len(testloader), itmets, 
+                    out = model(X)  # list of out_ds
+                    loss = criterion(out, Y)
+
+                    X, Y, out = X.detach(), Y.detach(), out.detach()
+
+                    itmets = it_metrics((out > 0).int(), Y, 
+                        loss.item(), testmeter, tracker)
+                    _print_itmets(cfg, it+1, len(testloader), itmets,
                         WATCH.toc(name='iter', disp=False))
-                    if debug['break_test_iter']: break
+                    
+                    if debug['break_test_iter'] or debug['overfitbatch']: 
+                        break
                     WATCH.tic(name='iter')
             epmets = _epoch_mets( 
                 cfg, tracker,
-                epmeter.avg(no_avg=['TPs', 'FPs', 'FNs']), 
-                testmeter.avg(no_avg=['TPs', 'FPs', 'FNs'])
+                epmeter.avg(no_avg=['TP', 'FP', 'FN', 'TN']), 
+                testmeter.avg(no_avg=['TP', 'FP', 'FN', 'TN'])
             )
         else:
             epmets = _epoch_mets(
                 cfg, tracker, 
-                epmeter.avg(no_avg=['TPs', 'FPs', 'FNs'])
+                epmeter.avg(no_avg=['TP', 'FP', 'FN', 'TN'])
             )
         
         WATCH.toc(name='epoch')
@@ -171,32 +173,29 @@ def _print_itmets(cfg, iter_num, iter_tot, it_mets, duration):
 
 # dict_keys: loss, mAP, F1, F1s, TPs, FPs, FNs
 def _epoch_mets(cfg, tracker, *dicts):
-    classnames = cfg['data']['classnames']
+    classnames = cfg['data'][cfg['data']['name']]
     merged = {}
     for i, d in enumerate(dicts):
         pre = 'test_ep_' if i else 'train_ep_'
         class_sep = False if len(classnames) == 1 else True
-        for k, v in d.items():  # add class confs, mAP, and loss
-            if k in ['F1', 'F1s']: 
-                continue
-            if k in ['TPs', 'FPs', 'FNs'] and class_sep:
-                for cidx in range(len(v)):
-                    merged[pre + k[:-1] + f'_{cidx}'] = v[cidx]
-            if k in ['mAP', 'loss']:
+        for k, v in d.items():
+            if k not in ['TP', 'FP', 'FN', 'TN']: 
                 merged[pre + k] = v
-        totTP, totFP, totFN = sum(d['TPs']), sum(d['FPs']), sum(d['FNs'])
-        merged[pre + 'TP'] = totTP
-        merged[pre + 'FP'] = totFP
-        merged[pre + 'FN'] = totFN
-        merged[pre + 'recall'] = totTP / (totTP + totFN + 10**-5)
-        merged[pre + 'precision'] = totTP / (totTP + totFP + 10**-5)
-        merged[pre + 'F1'] = (2*totTP) / (2*totTP + totFP + totFN + 10**-5)
+        merged[pre + 'TP'] = d['TP']
+        merged[pre + 'FP'] = d['FP']
+        merged[pre + 'FN'] = d['FN']
+        merged[pre + 'TN'] = d['TN']
+        merged[pre + 'cumjaccard'] = d['TP']/(d['TP']+d['FP']+d['FN']+10**-5)
+        merged[pre + 'cumdice'] = 2*d['TP']/(2*d['TP']+d['FP']+d['FN']+10**-5)
                     
     tracker.update(merged, wandb=True)
     
     print("\nEpoch Stats\n-----------")
     for k, v in merged.items():
-        print(f"  {k}: {v}")
+        if isinstance(v, float):
+            print(f"  {k: <21} {v:.4f}")
+        else:
+            print(f"  {k: <21} {v:d}")
     return merged
     
     

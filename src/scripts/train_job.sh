@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #$ -N BIBM_SSL
-#$ -o "/afs/crc.nd.edu/user/y/yzhang46/_BIBM20/src/experiments"
+#$ -o "/afs/crc.nd.edu/user/y/yzhang46/_BIBM20/src/experiments/isic17_baseline/0002_dunet201c"
 
 #$ -M yzhang46@nd.edu
 #$ -m abe                # Send mail when job begins, ends and aborts

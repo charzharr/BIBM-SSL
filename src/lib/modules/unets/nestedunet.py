@@ -1,4 +1,8 @@
 
+""" 
+Model: NestedUNet (9.16M Params)
+"""
+
 import torch
 from torch import nn
 

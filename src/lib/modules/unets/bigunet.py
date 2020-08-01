@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..basemodel import BaseModel
+
 
 
 ### ======================================================================== ###
@@ -103,25 +105,36 @@ class OutConv(nn.Module):
 ### ======================================================================== ###
 
 
-class BigUNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear=True):
+class BigUNet(BaseModel):
+    def __init__(self, n_channels, n_classes, bilinear=True, base_size=80):
+        """
+        Parameters
+            n_channels - number of input channels in image
+            n_classes - number of output channels that model will output
+            bilinear (bool) - use bilinear upsampling or transposed conv
+            base_size (int) - std U-Net: 64, 80 is 25% inc
+        """
         super(BigUNet, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
+        self.base_size = base_size
+        if self.base_size % 2 == 1:
+            self.base_size -= 1  # make channels even
+        print(f"  Prepping BigUNet w/base_size {self.base_size}.")
 
-        self.inc = DoubleConv(n_channels, 64)
-        self.down1 = Down(64, 128)
-        self.down2 = Down(128, 256)
-        self.down3 = Down(256, 512)
+        self.inc = DoubleConv(n_channels, self.base_size)
+        self.down1 = Down(self.base_size, self.base_size * 2)
+        self.down2 = Down(self.base_size * 2, self.base_size * 4)
+        self.down3 = Down(self.base_size * 4, self.base_size * 8)
         factor = 2 if bilinear else 1
-        self.down4 = Down(512, 1024 // factor)
+        self.down4 = Down(self.base_size * 8, self.base_size * 16 // factor)
         
-        self.up1 = Up(1024, 512 // factor, bilinear)
-        self.up2 = Up(512, 256 // factor, bilinear)
-        self.up3 = Up(256, 128 // factor, bilinear)
-        self.up4 = Up(128, 64, bilinear)
-        self.outc = OutConv(64, n_classes)
+        self.up1 = Up(self.base_size * 16, self.base_size * 8 // factor, bilinear)
+        self.up2 = Up(self.base_size * 8, self.base_size * 4 // factor, bilinear)
+        self.up3 = Up(self.base_size * 4, self.base_size * 2 // factor, bilinear)
+        self.up4 = Up(self.base_size * 2, self.base_size, bilinear)
+        self.outc = OutConv(self.base_size, n_classes)
 
     def forward(self, x):
         x1 = self.inc(x)

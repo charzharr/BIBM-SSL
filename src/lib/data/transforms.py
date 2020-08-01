@@ -81,7 +81,7 @@ class GeneralTransform:
         imsize = images.get_dimensions(im)[-2:]
         if tname == 'resize':
             out_size = settings[:2]
-            it = 0 if label else 2
+            it = 0 if label else 3  # 3 = bicubic, 2 = bilinear
             return resize(im, out_size, interpolation=it), ['resize', [*imsize]]
         elif tname == 'crop':  # settings = h, w, ty, tx (h & w: ratio or abs)
             if 0 <= sum(settings) <= 2:

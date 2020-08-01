@@ -4,12 +4,15 @@ import torch
 
 from .unet import UNet
 from .nestedunet import NestedUNet
-# from .bigunet import BigUNet
+from .bigunet import BigUNet
+from .denseunet import get_model as get_denseunet
 
 
 def get_model(cfg, pretrained=False):
+    assert False
 
     model_name = cfg['model']['name']
+    model_cfg = cfg['model']['model_name']
     ds_name = cfg['data']['name']
     bilinear = cfg['model'][model_name]['bilinear']
 
@@ -31,6 +34,14 @@ def get_model(cfg, pretrained=False):
             input_channels=in_channels,
             deep_supervision=cfg['model']['nestedunet_2d']['deepsup']
         )
+    # elif model_name == 'denseunet':
+    #     model = get_denseunet(
+    #         str(model_cfg['layers']), 
+    #         num_classes=out_channels,
+    #         growth_rate=model_cfg['growth_rate'],
+    #         bn_size=model_cfg['bn_size'],
+    #         drop_rate=model_cfg['drop_rate']
+    #     )
     else:
         raise ValueError(f"invalid model name {model_name}.")
     

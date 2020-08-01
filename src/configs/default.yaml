@@ -63,8 +63,16 @@ model:
     bilinear: True
   bigunet:
     bilinear: True
+    base_size: 80
   nestedunet:
     deepsup: False
+  denseunet:
+    layers: 121
+    growth_rate: 32
+    bn_size: 4
+    drop_rate: 0
+  r2attentionunet:
+    t: 2
 
 criterion:
   name: 'cross_entropy'
